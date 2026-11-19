@@ -16,7 +16,7 @@ All code is under `src/beltwatch`; tests are under `tests`. The integrator sets 
 - [x] Demo: `report.py` exposes `write_report(directory: Path, examples: Sequence[tuple[Clip, NDArray[np.float64]]], metrics: Mapping[str, Any]) -> None`. Input example scores length T-CONTEXT; metrics schema `{"methods": {name: {"clip_ap": float, "clip_auroc": float, "frame_ap": float, "recall": float, "false_alarm_rate": float, "threshold": float, ...}}, "config": {...}}`, primary method key `latent_sigreg`. Emit self-contained `replay.html` with built-in clips, keyboard-usable controls and score timeline, and `snapshot.png` using Pillow (a diagram/figure rendered from actual held-out data). No CDN or inline executable interpolation from JSON; test report generation and context offset. Demo only sees generated clips.
 - [x] Integrator: `metrics.py` handles exact tie-aware AP/AUROC, clip calibration on normal peaks and comparative metrics; `cli.py` builds split, trains full and ablation, computes baselines, aggregates, serializes JSON and safetensors, runs demo. Make `beltwatch run --out <new-dir>` and `--quick` (smaller smoke run), validate input and avoid overwriting existing directories. Package and document a CPU install; add Windows/Linux CI. Own integration and metrics tests.
 - [x] Independent QA and defensive code review: run real CLI and tests, check isolation, causality/report alignment, artifact handling, offline behavior, and dependency/workflow hygiene. No exploit development.
-- [ ] Publish verified sources and selected reproducible artifacts to the new repo's main branch and verify remote state.
+- [x] Publish verified sources and selected reproducible artifacts to the new repo's main branch and verify remote state.
 
 ## Review focus
 

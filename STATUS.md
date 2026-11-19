@@ -2,7 +2,7 @@
 
 | Owner | Workstream | State |
 | --- | --- | --- |
-| Integrator | Scope, docs, packaging, evaluation, CLI, release | Implemented and locally verified |
+| Integrator | Scope, docs, packaging, evaluation, CLI, release | Published |
 | Simulator | Synthetic conveyor and split integrity | Verified |
 | Model | CPU latent predictor and regularizer | Verified |
 | Demo | Static replay and snapshot rendering | Verified |
@@ -17,3 +17,4 @@
 - Independent benchmark QA: Validated split isolation and first changed frame across 144 paired faults, compared tied-score AP/AUROC with direct reference calculations for 200 randomized cases, verified the 7/73 leave-one-out exceedance rate for nominal calibration, and confirmed overwrite protection preserves existing files. Seed 2026 was a development pilot; a persistence residual plus training-only within-clip centering of SIGReg restored latent spread (1.10 versus 0.0018 with the otherwise matched uncentered pilot), with 80.7% event recall and 8.0% false alarms on the pilot. Do not use pilot numbers as final results.
 - Defensive review: No blocking code or workflow findings. Verified inert HTML data and no extra browser requests, caller-selected new output directory, read-only workflow permissions, and pinned actions. A runtime dependency advisory audit was clear after upgrading setuptools; the CPU wheel uses the same base version separately checked against PyPI advisories.
 - Integrator: Switched to the installed Python 3.14 after isolating the portable 3.12 loader issue. The reference architecture uses per-frame group normalization and a persistence residual; a regression catches the near-zero-spread pilot. Added a warm-up-fitted pixel-shift baseline and renewed calibration/test draws before the reference run. Full local run finished in ~37 seconds; 19 tests (95% line coverage), Ruff, ty, package build and browser replay checks passed. See docs/assets/metrics.json.
+- Release: Verified the public repository's default branch is `main`. A second full run reproduced the reference metrics, replay HTML and figure byte for byte. [GitHub Actions](https://github.com/sandeshbagmare/beltwatch-lab/actions) tracks Ubuntu and Windows checks.
