@@ -7,4 +7,4 @@
 - [x] Writing: review public docs and add a candid project article, with accurate links, attribution, numbers and definitions.
 - [x] Site: create static landing page with embedded replay, results, architecture explanation, paper references and reproduction instructions.
 - [x] Verification: run Python checks/build, independent review, browser interactions and responsive/keyboard checks. Verify generated/static assets and links.
-- [ ] Release: update version/status, commit/push intended files, enable Pages from docs, verify both CI jobs and the public page's actual content and replay.
+- [x] Release: update version/status, commit/push intended files, enable Pages from docs, verify both CI jobs and the public page's actual content and replay.
