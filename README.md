@@ -26,7 +26,15 @@ SIGReg is the regularizer that encourages the learned representations to retain 
 
 ## Run it yourself
 
-Clone this repository and use Python 3.12 or 3.14 in a fresh virtual environment. Install the CPU build of PyTorch, then the package. [PyTorch installation guide](https://pytorch.org/get-started/locally/)
+Use Python 3.12 or 3.14. Clone the repository and create a virtual environment:
+
+```shell
+git clone https://github.com/sandeshbagmare/beltwatch-lab.git
+cd beltwatch-lab
+python -m venv .venv
+```
+
+Activate it in PowerShell with `.\.venv\Scripts\Activate.ps1`, or on Linux and macOS with `source .venv/bin/activate`. If activation is unavailable, use `.\.venv\Scripts\python.exe` on Windows or `.venv/bin/python` in place of `python` below. Install the CPU build of PyTorch, then the package. [PyTorch installation guide](https://pytorch.org/get-started/locally/)
 
 ```shell
 python -m pip install --upgrade "setuptools>=84.1"
@@ -71,9 +79,19 @@ Run the test suite, linter, formatter check, and type checker from the repositor
 ```shell
 python -m pip install -e ".[test]"
 python -m pytest --cov=beltwatch
-python -m ruff check src tests
-python -m ruff format --check src tests
+python -m ruff check src tests browser_tests
+python -m ruff format --check src tests browser_tests
 ty check src
 ```
+
+The browser suite tests the real controls, downloads, offline playback, and narrow layouts. It needs a separate browser installation:
+
+```shell
+python -m pip install -e ".[test,browser]"
+python -m playwright install chromium
+python -m pytest browser_tests -q
+```
+
+On a minimal Linux system, use `python -m playwright install --with-deps chromium` to install Chromium's system libraries too. CI runs the Chromium suite on Ubuntu alongside the Python checks on Windows and Ubuntu. The [verification notes](docs/VERIFICATION.md) describe what each check covers and what remains untested.
 
 This benchmark uses synthetic equipment footage. Accuracy on a real conveyor, changing cameras, or gradual wear has not been measured.

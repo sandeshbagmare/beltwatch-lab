@@ -98,3 +98,14 @@ def test_published_replay_has_every_method_and_a_matching_script_policy():
     [script] = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
     digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
     assert f"'sha256-{digest}'" in html
+
+
+def test_repository_readme_links_target_current_headings():
+    site = SiteHTML()
+    site.feed((DOCS / "index.html").read_text(encoding="utf-8"))
+    headings = re.findall(r"^#{1,6} +(.+)$", (ROOT / "README.md").read_text(encoding="utf-8"), re.MULTILINE)
+    anchors = {re.sub(r"[^\w\s-]", "", heading.lower()).replace(" ", "-") for heading in headings}
+    for target in site.links:
+        url = urlsplit(target)
+        if url.netloc == "github.com" and url.path.rstrip("/") == "/sandeshbagmare/beltwatch-lab" and url.fragment:
+            assert url.fragment in anchors, target

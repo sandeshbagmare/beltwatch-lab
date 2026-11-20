@@ -77,6 +77,7 @@ def _sigreg(samples: Tensor, *, generator: torch.Generator) -> Tensor:
 @torch.inference_mode()
 def frame_scores(model: BeltModel, clips: Tensor) -> Tensor:
     """Score surprising observations using mean squared latent forecast error."""
+    _validate_clips(clips)
     return _prediction_errors(*model(clips))
 
 
@@ -87,14 +88,20 @@ def latent_spread(model: BeltModel, clips: Tensor) -> float:
     return embeddings.std(dim=0, correction=0).mean().item()
 
 
+def _validate_clips(clips: Tensor) -> None:
+    if clips.ndim != 4 or clips.shape[2:] != _FRAME_SHAPE or len(clips) == 0 or clips.shape[1] <= CONTEXT:
+        raise ValueError("expected clips shaped [B,T,32,48] with B > 0 and T > CONTEXT")
+    if clips.device.type != "cpu" or clips.dtype != torch.float32:
+        raise ValueError("expected float32 CPU clips")
+    if not torch.isfinite(clips).all() or clips.min() < 0 or clips.max() > 1:
+        raise ValueError("pixel values must be finite and normalized to [0,1]")
+
+
 def fit_model(
     clips: Tensor, *, epochs: int, seed: int, sigreg_weight: float = SIGREG_WEIGHT
 ) -> tuple[BeltModel, list[dict[str, float]]]:
     """Train the encoder and predictor jointly, returning sample-weighted epoch losses."""
-    if clips.ndim != 4 or clips.shape[2:] != _FRAME_SHAPE or len(clips) == 0 or clips.shape[1] <= CONTEXT:
-        raise ValueError("training requires clips shaped [B,T,32,48] with B > 0 and T > CONTEXT")
-    if clips.device.type != "cpu" or clips.dtype != torch.float32:
-        raise ValueError("training requires float32 CPU clips")
+    _validate_clips(clips)
     if epochs < 1 or not isfinite(sigreg_weight) or sigreg_weight < 0:
         raise ValueError("epochs must be positive and sigreg_weight must be finite and nonnegative")
 

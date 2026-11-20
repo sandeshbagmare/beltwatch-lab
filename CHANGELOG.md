@@ -1,5 +1,14 @@
 # Release notes
 
+## 0.2.1
+
+- Reject non-finite and unnormalized image values before model fitting or scoring.
+- Validate replay frame buffers before exporting them and exclude bytecode from source archives.
+- Added browser regression tests to the repository and Ubuntu CI.
+- Fixed the setup link and documented virtual environments and browser checks.
+- Kept chart labels readable when the replay is embedded on narrow screens.
+- Refreshed the replay screenshot to show the current detector controls.
+
 ## 0.2.0
 
 - Added a public GitHub Pages site with an embedded, keyboard-accessible replay.

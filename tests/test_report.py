@@ -1,5 +1,6 @@
 import base64
 import json
+from dataclasses import replace
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -118,5 +119,17 @@ def test_invalid_comparison_never_writes_partial_report(tmp_path, method, values
                 "config": {},
             },
             comparison_scores={method: values},
+        )
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("shape, dtype", [((32, 32, 48), np.float32), ((32, 0, 48), np.uint8), ((32, 32, 0), np.uint8)])
+def test_invalid_frame_buffers_never_write_a_replay(tmp_path, shape, dtype):
+    clip = replace(make_split("test", 1)[0], frames=np.zeros(shape, dtype=dtype))
+    with pytest.raises(ValueError, match="uint8.*32.*48"):
+        write_report(
+            tmp_path,
+            [(clip, np.zeros(28))],
+            {"methods": {"latent_sigreg": {"threshold": 0.25}}, "config": {}},
         )
     assert not list(tmp_path.iterdir())

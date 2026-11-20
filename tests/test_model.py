@@ -95,3 +95,14 @@ def test_regularized_embeddings_retain_variation_on_nominal_conveyor() -> None:
     held_out = torch.stack([torch.from_numpy(clip.frames) for clip in calibration]).float().div(255)
     model, _ = fit_model(training, epochs=8, seed=2026)
     assert latent_spread(model, held_out) > 0.1
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), -0.01, 1.01, 255.0])
+@pytest.mark.parametrize("operation", ["training", "scoring"])
+def test_invalid_pixel_values_are_rejected_before_computation(value, operation):
+    clips = torch.full((1, CONTEXT + 1, 32, 48), value)
+    with pytest.raises(ValueError, match="finite.*0.*1"):
+        if operation == "training":
+            fit_model(clips, epochs=1, seed=42)
+        else:
+            frame_scores(BeltModel(), clips)

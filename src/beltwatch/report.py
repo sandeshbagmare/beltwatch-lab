@@ -50,6 +50,8 @@ def write_report(
 
     clips = []
     for index, (clip, scores) in enumerate(examples):
+        if clip.frames.ndim != 3 or clip.frames.dtype != np.uint8 or clip.frames.shape[1:] != (32, 48):
+            raise ValueError("report frames must be uint8 with shape [T,32,48]")
         length, height, width = clip.frames.shape
         if (
             length <= CONTEXT
@@ -196,7 +198,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
 .pane h2{font-size:.95rem;margin-bottom:9px}
 canvas{display:block;width:100%}
 #camera{image-rendering:pixelated;aspect-ratio:3/2;border-radius:4px}
-#chart{aspect-ratio:480/230}
+#chart{aspect-ratio:480/230;min-height:180px}
 figcaption,.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:.79rem;color:var(--muted)}
 .mint{color:var(--mint)}.amber{color:var(--amber)}
 .timeline{margin-top:16px}
@@ -325,8 +327,12 @@ function choose() {
 }
 
 function drawPlot(index) {
-  const {width, height} = plot.canvas;
-  const left = 100, right = width - 30, top = 34, bottom = height - 52;
+  const {width, height} = plot.canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  plot.canvas.width = Math.round(width * ratio);
+  plot.canvas.height = Math.round(height * ratio);
+  plot.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const left = 64, right = width - 8, top = 14, bottom = height - 28;
   const x = i => left + i / (selected.scores.length - 1) * (right - left);
   const y = score => bottom - score / highest * (bottom - top);
   const scores = selected.method_scores[methodKey];
@@ -339,25 +345,25 @@ function drawPlot(index) {
     if (active) plot.fillRect(x(i), top, x(Math.min(i + 1, selected.labels.length - 1)) - x(i), bottom - top);
   });
   plot.strokeStyle = "#31445c";
-  plot.lineWidth = 2;
-  plot.font = "23px ui-monospace, monospace";
+  plot.lineWidth = 1;
+  plot.font = "12px ui-monospace, monospace";
   plot.fillStyle = "#a1b4cc";
   [0, 0.5, 1].forEach(fraction => {
     const mark = highest * fraction;
     line(left, y(mark), right, y(mark));
-    plot.fillText(mark === 0 ? "0" : fmt(mark), 0, y(mark) + 8);
+    plot.fillText(mark === 0 ? "0" : fmt(mark), 0, y(mark) + 4);
   });
   const last = selected.scores.length - 1;
-  plot.fillText("0", left, bottom + 34);
+  plot.fillText("0", left, bottom + 22);
   plot.textAlign = "right";
-  plot.fillText(String(last), right, bottom + 34);
+  plot.fillText(String(last), right, bottom + 22);
   plot.textAlign = "left";
   plot.strokeStyle = "#ffbb78";
-  plot.setLineDash([13, 9]);
+  plot.setLineDash([6, 4]);
   line(left, y(threshold), right, y(threshold));
   plot.setLineDash([]);
   plot.strokeStyle = "#73ecd8";
-  plot.lineWidth = 4;
+  plot.lineWidth = 2;
   plot.beginPath();
   scores.forEach((score, i) => {
     if (score === null) return;
@@ -366,12 +372,12 @@ function drawPlot(index) {
   });
   plot.stroke();
   plot.strokeStyle = "#a1b4cc";
-  plot.lineWidth = 2;
+  plot.lineWidth = 1;
   line(x(index), top, x(index), bottom);
   const score = scores[index];
   if (score !== null) {
     plot.fillStyle = "#73ecd8";
-    plot.beginPath(); plot.arc(x(index), y(score), 7, 0, 2 * Math.PI); plot.fill();
+    plot.beginPath(); plot.arc(x(index), y(score), 3.5, 0, 2 * Math.PI); plot.fill();
   }
 }
 
@@ -413,4 +419,5 @@ play.addEventListener("click", () => {
 });
 chooseMethod();
 choose();
+new ResizeObserver(() => drawPlot(frame)).observe(plot.canvas);
 """
