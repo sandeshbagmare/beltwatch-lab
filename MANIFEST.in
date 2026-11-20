@@ -1,0 +1,4 @@
+include CHANGELOG.md
+include AGENTS.md CONTEXT.md STATUS.md
+graft docs
+graft data

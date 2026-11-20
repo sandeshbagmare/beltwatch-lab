@@ -1,30 +1,32 @@
 # BeltWatch Lab
 
-**A tiny video world model for finding synthetic conveyor faults.** Train it on normal clips, then replay jams, reversals, and appearance defects to see where its next-frame expectations break.
+**Teach a small video model what a moving conveyor looks like, then see what happens when the belt stops.**
 
-BeltWatch runs on a CPU, generates its own footage, and opens an interactive replay in your browser. The model implements the end-to-end latent prediction and Gaussian regularization rule from the 2026 [LeWorldModel paper](https://arxiv.org/abs/2603.19312), with a compact encoder and no equipment control inputs.
+BeltWatch learns from normal synthetic footage and scores jams, reversals, and debris without seeing examples of those faults during training. It runs on a CPU. The browser replay lets you inspect the footage, move through each frame, and compare five detectors on the same clip.
 
-![Held-out normal, jam, reverse and debris clips next to their prediction errors](docs/assets/snapshot.png)
+[Open the demo](https://sandeshbagmare.github.io/beltwatch-lab/) · [Read the project story](docs/ARTICLE.md) · [Inspect the results](docs/assets/metrics.json)
 
-[Download the standalone replay](docs/assets/replay.html) (use **Download raw file** on GitHub and open the saved HTML). The [reference metrics](docs/assets/metrics.json) and [benchmark notes](docs/EVALUATION.md) explain how the results were obtained.
+![Four matching conveyor clips with the learned model's prediction error](docs/assets/snapshot.png)
 
-## Reference results
+A small neural network turns each frame into 16 numbers. Another network uses the previous four representations to predict the next one. A large gap between the prediction and the observed representation raises an alert. Python runs the model, and the browser plays the saved scores with each detector's own scale and threshold. The prediction objective comes from the 2026 LeWorldModel paper. [Research paper](https://arxiv.org/abs/2603.19312)
 
-The 15,136-parameter model trained on 160 normal scenes. On 80 unseen scenes, it detected **83.8%** of faults and alerted on **8.8%** of nominal clips. Each test scene includes a matched normal, jam, reverse and debris clip.
+## What the experiment found
 
-| Method | Clip AUROC | Frame AP | Event recall | Normal clips alerted |
+The 15,136-parameter model detected **201 of 240 simulated faults** and alerted on **7 of 80 normal clips**. A detector that assumes constant horizontal movement found every fault. Its assumption matches how the simulator moves the belt.
+
+| Detector | Clip AUROC | Frame AP | Faults detected | Normal clips alerted |
 | --- | ---: | ---: | ---: | ---: |
 | Latent predictor + SIGReg | 0.927 | 0.913 | 83.8% | 8.8% |
-| Latent predictor without SIGReg | 0.487 | 0.401 | 11.7% | 10.0% |
-| Repeat previous pixels | 0.497 | 0.365 | 6.7% | 10.0% |
+| Same model without SIGReg | 0.487 | 0.401 | 11.7% | 10.0% |
+| Repeat the previous frame | 0.497 | 0.365 | 6.7% | 10.0% |
 | Extrapolate pixel changes | 0.603 | 0.380 | 19.2% | 12.5% |
-| Fit a fixed horizontal pixel shift | 1.000 | 1.000 | 100.0% | 7.5% |
+| Fit a fixed horizontal shift | 1.000 | 1.000 | 100.0% | 7.5% |
 
-The pixel-shift baseline wins here because the simulator moves the belt at a constant horizontal speed. The model's weakest fault was debris (55.0% recall). The experiment shows how regularization changes a learned representation, and why a simple baseline with the right prior is hard to beat.
+SIGReg is the regularizer that encourages the learned representations to retain variation. Removing it hurt this model badly. The regularized model detected 44 of 80 debris events, its weakest result across the three fault types. [Evaluation notes](docs/EVALUATION.md)
 
-## Run locally
+## Run it yourself
 
-Use Python 3.12 or 3.14 and the [PyTorch CPU wheel](https://pytorch.org/get-started/locally/). In a fresh virtual environment:
+Clone this repository and use Python 3.12 or 3.14 in a fresh virtual environment. Install the CPU build of PyTorch, then the package. [PyTorch installation guide](https://pytorch.org/get-started/locally/)
 
 ```shell
 python -m pip install --upgrade "setuptools>=84.1"
@@ -33,35 +35,45 @@ python -m pip install .
 python -m beltwatch run --quick --out runs/smoke
 ```
 
-Open `runs/smoke/replay.html` in a browser. For the full benchmark, run `python -m beltwatch run --out runs/benchmark`. Choose a fresh output path for each run.
+Open `runs/smoke/replay.html` in a browser to check the pipeline. Use the full benchmark to compare detectors.
 
-| File | What it contains |
+```shell
+python -m beltwatch run --out runs/benchmark
+```
+
+Choose a new output directory each time. The reference run took about 37 seconds on an Intel i5-10300H with two CPU threads. Training and the saved replay work offline after installation.
+
+| Output | Contents |
 | --- | --- |
-| `replay.html` | Offline, interactive playback with an aligned score trace and threshold |
-| `snapshot.png` | Shareable figure drawn from the run |
-| `metrics.json` | Config, training losses, calibration diagnostics and held-out scores |
-| `model.safetensors` | Trained weights from the regularized neural model |
+| `replay.html` | Self-contained clip playback, detector choices, scores, and alert thresholds |
+| `snapshot.png` | Four clips beside the learned model's error traces |
+| `metrics.json` | Run settings, training losses, and results for every detector |
+| `model.safetensors` | Weights for the regularized neural model |
 
-## How it works
+To open the reference replay locally, select **Download raw file** on its GitHub page. [Replay file](docs/assets/replay.html)
+
+## Follow the experiment
 
 ```mermaid
 flowchart LR
-    A[Generate conveyor clips] --> B[Learn on normal clips]
-    B --> C[Predict next latent from past frames]
-    C --> D[Compare to observed latent]
-    D --> E[Calibrate on separate normal clips]
-    E --> F[Evaluate held-out faults]
-    F --> G[Replay scores and compare to baselines]
+    A[Generate normal training clips] --> B[Learn to predict the next representation]
+    B --> C[Set thresholds on separate normal clips]
+    C --> D[Score unseen normal and fault clips]
+    D --> E[Compare five detectors in the replay]
 ```
 
-Read the [research method](docs/METHOD.md), [evaluation protocol](docs/EVALUATION.md), [data card](data/README.md), and [architecture design](docs/superpowers/specs/2026-11-20-beltwatch-design.md). See [AGENTS.md](AGENTS.md), [CONTEXT.md](CONTEXT.md), and [STATUS.md](STATUS.md) for contribution context.
+Read about the first failed run, how the model was built, and how the generator makes the clips. [Project story](docs/ARTICLE.md) · [Method](docs/METHOD.md) · [Data card](data/README.md)
+
+Contributors can find instructions, project context, and verification results in the repository. [AGENTS.md](AGENTS.md) · [CONTEXT.md](CONTEXT.md) · [STATUS.md](STATUS.md)
+
+Run the test suite, linter, formatter check, and type checker from the repository root.
 
 ```shell
 python -m pip install -e ".[test]"
 python -m pytest --cov=beltwatch
-python -m ruff check .
-python -m ruff format --check .
+python -m ruff check src tests
+python -m ruff format --check src tests
 ty check src
 ```
 
-This is an experiment on synthetic equipment footage. It has not been validated on real equipment and should not be used as a safety system.
+This benchmark uses synthetic equipment footage. Accuracy on a real conveyor, changing cameras, or gradual wear has not been measured.

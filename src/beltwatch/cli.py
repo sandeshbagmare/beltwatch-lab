@@ -89,6 +89,7 @@ def _run(out: Path, *, profile: Profile, seed: int, threads: int) -> None:
     test_frames = _frames(test)
 
     methods: dict[str, MethodMetrics] = {}
+    scores_by_method: dict[str, NDArray[np.float64]] = {}
     training: dict[str, object] = {}
     latent_scores: NDArray[np.float64] | None = None
     primary_model: BeltModel | None = None
@@ -100,6 +101,7 @@ def _run(out: Path, *, profile: Profile, seed: int, threads: int) -> None:
         score = partial(frame_scores, model)
         threshold = calibrated_threshold(_batched(score, calibration), alpha=ALPHA)
         held_out = _batched(score, test_frames)
+        scores_by_method[name] = held_out
         methods[name] = evaluate(test, held_out, threshold=threshold)
         training[name] = {"epochs": history, "calibration_latent_spread": latent_spread(model, calibration)}
         if name == "latent_sigreg":
@@ -107,10 +109,13 @@ def _run(out: Path, *, profile: Profile, seed: int, threads: int) -> None:
 
     for name, extrapolate in (("pixel_delta", False), ("pixel_linear", True)):
         threshold = calibrated_threshold(_pixel_scores(calibration, extrapolate=extrapolate).numpy(), alpha=ALPHA)
-        methods[name] = evaluate(test, _pixel_scores(test_frames, extrapolate=extrapolate).numpy(), threshold=threshold)
+        held_out = _pixel_scores(test_frames, extrapolate=extrapolate).numpy().astype(np.float64)
+        scores_by_method[name] = held_out
+        methods[name] = evaluate(test, held_out, threshold=threshold)
 
     threshold = calibrated_threshold(_batched(_shift_scores, calibration), alpha=ALPHA)
-    methods["pixel_shift"] = evaluate(test, _batched(_shift_scores, test_frames), threshold=threshold)
+    scores_by_method["pixel_shift"] = _batched(_shift_scores, test_frames)
+    methods["pixel_shift"] = evaluate(test, scores_by_method["pixel_shift"], threshold=threshold)
 
     assert primary_model is not None and latent_scores is not None
     metrics = {
@@ -135,7 +140,12 @@ def _run(out: Path, *, profile: Profile, seed: int, threads: int) -> None:
     demo_indices = [
         next(index for index, clip in enumerate(test) if clip.fault == fault) for fault in ("normal", *FAULTS)
     ]
-    write_report(out, [(test[i], latent_scores[i]) for i in demo_indices], metrics)
+    write_report(
+        out,
+        [(test[i], latent_scores[i]) for i in demo_indices],
+        metrics,
+        comparison_scores={name: [scores[i] for i in demo_indices] for name, scores in scores_by_method.items()},
+    )
     save_file(
         {name: tensor.contiguous() for name, tensor in primary_model.state_dict().items()}, out / "model.safetensors"
     )

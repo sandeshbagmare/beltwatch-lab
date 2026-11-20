@@ -72,3 +72,51 @@ def test_report_rejects_scores_for_context_frames(tmp_path: Path) -> None:
             {"methods": {"latent_sigreg": {"threshold": 0.25}}, "config": {}},
         )
     assert not list(tmp_path.iterdir())
+
+
+def test_comparison_scores_align_with_the_same_target_frames(tmp_path: Path) -> None:
+    clips = make_split("test", 1)[:2]
+    primary = np.full(28, 0.125)
+    comparisons = [np.full(28, 0.5), np.full(28, 0.75)]
+    write_report(
+        tmp_path,
+        [(clip, primary) for clip in clips],
+        {
+            "methods": {"latent_sigreg": {"threshold": 0.25}, "pixel_delta": {"threshold": 0.4}},
+            "config": {},
+        },
+        comparison_scores={"pixel_delta": comparisons},
+    )
+    page = ReplayHTML()
+    page.feed((tmp_path / "replay.html").read_text(encoding="utf-8"))
+    report = json.loads(page.payload)
+    for clip, comparison in zip(report["clips"], comparisons, strict=True):
+        assert clip["method_scores"]["latent_sigreg"] == clip["scores"]
+        assert clip["method_scores"]["pixel_delta"] == [None] * 4 + comparison.tolist()
+
+
+@pytest.mark.parametrize(
+    "method, values, threshold",
+    [
+        ("missing", [np.zeros(28)], 0.25),
+        ("pixel_delta", [], 0.25),
+        ("pixel_delta", [np.zeros(32)], 0.25),
+        ("pixel_delta", [np.full(28, float("nan"))], 0.25),
+        ("pixel_delta", [np.full(28, -1)], 0.25),
+        ("pixel_delta", [np.zeros(28)], float("nan")),
+        ("latent_sigreg", [np.ones(28)], 0.25),
+    ],
+)
+def test_invalid_comparison_never_writes_partial_report(tmp_path, method, values, threshold):
+    clip = make_split("test", 1)[0]
+    with pytest.raises(ValueError, match="comparison"):
+        write_report(
+            tmp_path,
+            [(clip, np.zeros(28))],
+            {
+                "methods": {"latent_sigreg": {"threshold": 0.25}, "pixel_delta": {"threshold": threshold}},
+                "config": {},
+            },
+            comparison_scores={method: values},
+        )
+    assert not list(tmp_path.iterdir())

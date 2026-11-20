@@ -3,6 +3,7 @@ from pathlib import Path
 
 import torch
 from safetensors.torch import load_file
+from test_report import ReplayHTML
 
 from beltwatch.cli import _shift_scores, main
 
@@ -36,6 +37,11 @@ def test_cli_benchmarks_and_generates_offline_artifacts(tmp_path: Path):
     assert load_file(out / "model.safetensors")
     assert (out / "replay.html").stat().st_size > 1000
     assert (out / "snapshot.png").read_bytes().startswith(b"\x89PNG")
+    replay = ReplayHTML()
+    replay.feed((out / "replay.html").read_text(encoding="utf-8"))
+    clips = json.loads(replay.payload)["clips"]
+    assert len(clips) == 4
+    assert all(set(clip["method_scores"]) == set(metrics["methods"]) for clip in clips)
 
 
 def test_shift_baseline_uses_signed_motion_from_past_frames():

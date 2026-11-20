@@ -28,14 +28,28 @@ _FAULT = "#ffbb78"
 _FAULT_BG = "#302a2c"
 
 
-def write_report(directory: Path, examples: Sequence[_Example], metrics: Mapping[str, Any]) -> None:
-    """Write a standalone replay and a figure using the same scores and event labels."""
+def write_report(
+    directory: Path,
+    examples: Sequence[_Example],
+    metrics: Mapping[str, Any],
+    *,
+    comparison_scores: Mapping[str, Sequence[NDArray[np.float64]]] | None = None,
+) -> None:
+    """Write aligned footage, scores and thresholds for each available detector."""
     threshold = float(metrics["methods"]["latent_sigreg"]["threshold"])
     if not examples or not math.isfinite(threshold) or threshold < 0:
         raise ValueError("report requires examples and a finite, nonnegative threshold")
 
+    comparisons = comparison_scores or {}
+    for method, values in comparisons.items():
+        if method not in metrics["methods"] or len(values) != len(examples):
+            raise ValueError("comparison methods and clip counts must match the report")
+        limit = float(metrics["methods"][method]["threshold"])
+        if not math.isfinite(limit) or limit < 0:
+            raise ValueError("comparison thresholds must be finite and nonnegative")
+
     clips = []
-    for clip, scores in examples:
+    for index, (clip, scores) in enumerate(examples):
         length, height, width = clip.frames.shape
         if (
             length <= CONTEXT
@@ -45,6 +59,17 @@ def write_report(directory: Path, examples: Sequence[_Example], metrics: Mapping
             or (scores < 0).any()
         ):
             raise ValueError("report scores must be finite, nonnegative and aligned to target frames")
+        method_scores = {"latent_sigreg": [None] * CONTEXT + scores.tolist()}
+        for method, values in comparisons.items():
+            comparison = values[index]
+            if (
+                comparison.shape != scores.shape
+                or not np.isfinite(comparison).all()
+                or (comparison < 0).any()
+                or (method == "latent_sigreg" and not np.array_equal(comparison, scores))
+            ):
+                raise ValueError("comparison scores must match the labeled target frames")
+            method_scores[method] = [None] * CONTEXT + comparison.tolist()
         clips.append(
             {
                 "id": clip.clip_id,
@@ -55,6 +80,7 @@ def write_report(directory: Path, examples: Sequence[_Example], metrics: Mapping
                 "pixels": base64.b64encode(clip.frames.tobytes()).decode("ascii"),
                 "labels": clip.labels.tolist(),
                 "scores": [None] * CONTEXT + scores.tolist(),
+                "method_scores": method_scores,
             }
         )
 
@@ -158,7 +184,8 @@ h2,p,figure{margin:0}
 .description{max-width:66ch;color:var(--muted);margin-top:14px}
 .replay{margin-top:26px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
 .controls{display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin-bottom:16px}
-.field{display:grid;gap:4px}
+.field{display:grid;gap:4px;min-width:0;max-width:100%}
+.field select{min-width:0;width:100%;max-width:100%}
 label,.meta{color:var(--muted);font:600 .78rem ui-monospace,monospace}
 button,select{min-height:42px;padding:8px 12px;background:var(--bg);color:var(--text);
               border:1px solid var(--line);border-radius:8px;font:inherit}
@@ -184,16 +211,18 @@ footer{margin-top:18px;color:var(--muted);font-size:.84rem}
 <main>
   <header>
     <p class="eyebrow">BELTWATCH LAB &nbsp; / &nbsp; HELD-OUT REPLAY</p>
-    <h1>When a conveyor surprises the model</h1>
-    <p class="description">Replay synthetic clips and compare the model's forecast with its encoding of each observed
-      frame. The threshold comes from a separate set of normal clips.</p>
+    <h1>What changes when the belt stops?</h1>
+    <p class="description">Choose a detector and a clip, then scrub through the moment a fault begins.
+      Each detector has its own threshold, set using separate normal clips.</p>
   </header>
   <section class="replay" aria-label="Conveyor replay">
     <div class="controls">
       <div class="field"><label for="clip">Test clip</label><select id="clip"></select></div>
+      <div class="field"><label for="method">Detector</label><select id="method"></select></div>
       <button id="play" type="button">Play</button>
       <span id="scene" class="meta"></span>
     </div>
+    <p id="method-note" class="description"></p>
     <div class="grid">
       <figure class="pane">
         <h2>Observed frame</h2>
@@ -230,16 +259,38 @@ _SCRIPT = """
 const $ = id => document.getElementById(id);
 const data = JSON.parse($("run-data").textContent);
 const clips = data.clips;
-const method = data.methods.latent_sigreg;
-const threshold = method.threshold;
-const highest = clips.reduce((top, clip) =>
-  clip.scores.reduce((peak, score) => score === null ? peak : Math.max(peak, score), top), threshold) || 1;
+const descriptions = {
+  latent_sigreg: ["Learned model + SIGReg",
+    "Predict the next frame's learned representation from four past frames. SIGReg keeps those representations varied."],
+  latent_no_sigreg: ["Learned model without SIGReg",
+    "The same neural network trained without the regularizer. Compare its predictions with the regularized model."],
+  pixel_delta: ["Repeat previous pixels",
+    "Predict that the next frame repeats the last one. A stopped belt can look normal to this detector."],
+  pixel_linear: ["Extrapolate pixel changes",
+    "Continue the change between the two previous frames, keeping pixel values in range."],
+  pixel_shift: ["Fit a fixed pixel shift",
+    "Estimate horizontal motion from the first four frames and keep that shift fixed. This fits the simulator's motion well."]
+};
+const detector = $("method");
+let methodKey, method, threshold, highest;
 const fmt = n => n.toExponential(2);
 const chooser = $("clip"), range = $("frame"), play = $("play");
 const camera = $("camera").getContext("2d"), plot = $("chart").getContext("2d");
 let selected, pixels, frame, timer = null;
 
 clips.forEach((clip, i) => chooser.add(new Option(clip.fault.replace(/^./, c => c.toUpperCase()), i)));
+Object.keys(clips[0].method_scores).forEach(key => detector.add(new Option(descriptions[key]?.[0] || key, key)));
+
+function chooseMethod() {
+  stop();
+  methodKey = detector.value;
+  method = data.methods[methodKey];
+  threshold = method.threshold;
+  highest = clips.reduce((top, clip) =>
+    clip.method_scores[methodKey].reduce((peak, score) => score === null ? peak : Math.max(peak, score), top), threshold) || 1;
+  $("method-note").textContent = (descriptions[methodKey]?.[1] || "")
+    + " The chart scale changes with the detector; compare scores to its dashed threshold.";
+  $("metrics").replaceChildren();
 for (const [key, label] of [
   ["clip_ap", "Held-out clip AP"], ["clip_auroc", "Clip AUROC"], ["frame_ap", "Frame AP"],
   ["recall", "Event recall"], ["false_alarm_rate", "Normal clips alerted"]
@@ -251,6 +302,8 @@ for (const [key, label] of [
     entry.append(term, value);
     $("metrics").append(entry);
   }
+}
+  if (selected) render();
 }
 
 function stop() {
@@ -276,6 +329,7 @@ function drawPlot(index) {
   const left = 100, right = width - 30, top = 34, bottom = height - 52;
   const x = i => left + i / (selected.scores.length - 1) * (right - left);
   const y = score => bottom - score / highest * (bottom - top);
+  const scores = selected.method_scores[methodKey];
   const line = (a, b, c, d) => {
     plot.beginPath(); plot.moveTo(a, b); plot.lineTo(c, d); plot.stroke();
   };
@@ -305,7 +359,7 @@ function drawPlot(index) {
   plot.strokeStyle = "#73ecd8";
   plot.lineWidth = 4;
   plot.beginPath();
-  selected.scores.forEach((score, i) => {
+  scores.forEach((score, i) => {
     if (score === null) return;
     if (i === data.context) plot.moveTo(x(i), y(score));
     else plot.lineTo(x(i), y(score));
@@ -314,7 +368,7 @@ function drawPlot(index) {
   plot.strokeStyle = "#a1b4cc";
   plot.lineWidth = 2;
   line(x(index), top, x(index), bottom);
-  const score = selected.scores[index];
+  const score = scores[index];
   if (score !== null) {
     plot.fillStyle = "#73ecd8";
     plot.beginPath(); plot.arc(x(index), y(score), 7, 0, 2 * Math.PI); plot.fill();
@@ -332,7 +386,7 @@ function render() {
   }
   camera.putImageData(image, 0, 0);
   drawPlot(frame);
-  const score = selected.scores[frame], active = selected.labels[frame];
+  const score = selected.method_scores[methodKey][frame], active = selected.labels[frame];
   $("position").textContent = frame + " / " + range.max;
   $("event").textContent = active ? "Simulated " + selected.fault : "No simulated event";
   $("event").className = active ? "amber" : "";
@@ -345,6 +399,7 @@ function render() {
 }
 
 chooser.addEventListener("change", choose);
+detector.addEventListener("change", chooseMethod);
 range.addEventListener("input", () => { stop(); render(); });
 play.addEventListener("click", () => {
   if (timer !== null) { stop(); return; }
@@ -356,5 +411,6 @@ play.addEventListener("click", () => {
     if (frame === Number(range.max)) stop();
   }, 125);
 });
+chooseMethod();
 choose();
 """
